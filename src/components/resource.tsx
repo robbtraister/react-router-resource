@@ -1,12 +1,95 @@
 'use strict'
 
 import { singular as singularize } from 'pluralize'
-import React from 'react'
+import React, { useContext, useEffect, useReducer } from 'react'
 import { Route, useRouteMatch } from 'react-router'
 
 import { useApiPrefix } from './api-prefix'
 import { Client, IParams } from './client'
-import { resourceContext } from './contexts'
+import { clientContext, resourcesContext, useResources } from './contexts'
+import { List } from './list'
+import { Show } from './show'
+
+import { useQueryParams } from '../hooks/useQueryParams'
+
+const ResourceLoader = () => {
+  const route = useRouteMatch()
+  const {
+    cache,
+    client,
+    idField,
+    idParam,
+    name: { singular },
+    dispatch
+  } = useContext(clientContext)
+  const id = route.params[idParam]
+
+  useEffect(() => {
+    let mounted = true
+
+    if (id !== 'new') {
+      dispatch({ type: 'SET_RESOURCE', payload: cache.items[id] })
+
+      client.get(id).then(data => {
+        if (mounted) {
+          const resource = data && data[singular]
+          if (resource) {
+            cache.items[resource[idField]] = resource
+          }
+          dispatch({ type: 'SET_RESOURCE', payload: resource })
+        }
+      })
+    }
+
+    return () => {
+      mounted = false
+    }
+  }, [client, id, singular, idField])
+
+  return null
+}
+
+const ResourcesLoader = () => {
+  const routeQueryParams = useQueryParams()
+  const {
+    cache,
+    client,
+    idField,
+    name: { plural },
+    dispatch
+  } = useContext(clientContext)
+
+  const apiQueryParams = client.serializeParams(routeQueryParams)
+  const cachedPage = cache.pages[apiQueryParams]
+
+  useEffect(() => {
+    let mounted = true
+
+    dispatch({
+      type: 'SET_RESOURCES',
+      payload: cachedPage && cachedPage.map(id => cache.items[id])
+    })
+
+    client.list(apiQueryParams).then(data => {
+      if (mounted) {
+        const resources = data && data[plural]
+        if (resources) {
+          cache.pages[apiQueryParams] = resources.map(resource => {
+            cache.items[resource[idField]] = resource
+            return resource[idField]
+          })
+        }
+        dispatch({ type: 'SET_RESOURCES', payload: resources })
+      }
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [client, apiQueryParams, plural, idField])
+
+  return null
+}
 
 interface IName {
   singular: string
@@ -77,11 +160,27 @@ export const Resource = ({
   const cache =
     resourceStore[path] || (resourceStore[path] = { items: {}, pages: {} })
 
+  const parentResources = useResources()
+
   const rawName = inputName || path.split('/').pop()
 
   const name = isName(rawName)
     ? rawName
     : { singular: singularize(rawName), plural: rawName }
+
+  const [state, dispatch] = useReducer((state, action) => {
+    switch (action.type) {
+      case 'SET_RESOURCE':
+        return {
+          ...state,
+          [name.singular]: action.payload
+        }
+      case 'SET_RESOURCES':
+        return {
+          [name.plural]: action.payload
+        }
+    }
+  }, {})
 
   const idParam = `${name.singular}Id`
 
@@ -97,17 +196,26 @@ export const Resource = ({
 
   return (
     <Route path={path}>
-      <resourceContext.Provider
+      <clientContext.Provider
         value={{
           cache,
           client,
           idField,
           idParam,
           name,
-          path
+          path,
+          dispatch
         }}>
-        {children}
-      </resourceContext.Provider>
+        <resourcesContext.Provider
+          value={{
+            ...parentResources,
+            ...state
+          }}>
+          <List component={ResourcesLoader} />
+          <Show component={ResourceLoader} />
+          {children}
+        </resourcesContext.Provider>
+      </clientContext.Provider>
     </Route>
   )
 }

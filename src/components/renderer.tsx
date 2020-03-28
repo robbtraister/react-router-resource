@@ -21,7 +21,7 @@ export const Renderer = ({
     typeof children === 'function' ? (
       children(props)
     ) : (
-      <>{children}</>
+      children
     )
   ) : Component ? (
     <Component {...props} />

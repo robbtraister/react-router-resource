@@ -4,7 +4,7 @@ import { createContext, useContext } from 'react'
 
 import { IParams } from './client'
 
-export const resourceContext = createContext({
+export const clientContext = createContext({
   cache: {
     items: {},
     pages: {}
@@ -17,10 +17,11 @@ export const resourceContext = createContext({
   idField: 'id',
   idParam: null,
   name: {
-    singular: null,
-    plural: null
+    singular: '',
+    plural: ''
   },
-  path: '/'
+  path: '/',
+  dispatch: action => null
 })
 
 export const resourcesContext = createContext({})
