@@ -3,15 +3,15 @@
 import React, { useContext } from 'react'
 import { Route } from 'react-router'
 
-import { resourceContext } from './contexts'
+import { clientContext } from './contexts'
 import { Renderer, TRendererProps } from './renderer'
 
-export const Edit = (rendererProps: TRendererProps) => {
-  const { idParam, path } = useContext(resourceContext)
+export const Edit = (props: TRendererProps) => {
+  const { idParam, path } = useContext(clientContext)
 
   return (
     <Route exact path={`${path}/:${idParam}/edit`}>
-      <Renderer {...rendererProps} />
+      <Renderer {...props} />
     </Route>
   )
 }

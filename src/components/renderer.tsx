@@ -1,6 +1,8 @@
 'use strict'
 
 import React from 'react'
+import { useHistory, useLocation, useRouteMatch } from 'react-router'
+import { useResources } from './contexts'
 
 export type TRendererProps =
   | { children?: React.ReactNode; component?: never; render?: never }
@@ -14,9 +16,21 @@ export type TRendererProps =
 export const Renderer = ({
   children,
   component: Component,
-  render,
-  props = {}
+  render
 }: TRendererProps & { props?: object }): React.ReactElement => {
+  const history = useHistory()
+  const location = useLocation()
+  const match = useRouteMatch()
+  const resources = useResources()
+
+  const props = {
+    history,
+    location,
+    match,
+
+    ...resources
+  }
+
   return children ? (
     typeof children === 'function' ? (
       children(props)

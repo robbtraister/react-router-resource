@@ -1,30 +1,10 @@
 'use strict'
 
 import React, { useContext } from 'react'
-import { Route, useHistory, useLocation, useRouteMatch } from 'react-router'
+import { Route, useRouteMatch } from 'react-router'
 
-import { clientContext, useResources } from './contexts'
+import { clientContext } from './contexts'
 import { Renderer, TRendererProps } from './renderer'
-
-const RoutedShow = (rendererProps: TRendererProps) => {
-  const history = useHistory()
-  const location = useLocation()
-  const match = useRouteMatch()
-  const {
-    name: { singular }
-  } = useContext(clientContext)
-  const { [singular]: resource } = useResources()
-
-  const props = {
-    history,
-    location,
-    match,
-
-    [singular]: resource
-  }
-
-  return <Renderer {...rendererProps} props={props} />
-}
 
 const ShowIgnoreNew = (props: TRendererProps) => {
   const route = useRouteMatch()
@@ -36,7 +16,7 @@ const ShowIgnoreNew = (props: TRendererProps) => {
     return null
   }
 
-  return <RoutedShow {...props} />
+  return <Renderer {...props} />
 }
 
 type TShowProps = TRendererProps & { exact?: boolean }
