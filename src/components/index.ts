@@ -1,5 +1,6 @@
 export * from './api-prefix'
-export { resourcesContext, useResources } from './contexts'
+export { Client } from './client'
+export { useClient, useConfig, useResources } from './contexts'
 export * from './list'
 export * from './resource'
 export * from './show'

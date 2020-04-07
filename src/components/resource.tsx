@@ -1,12 +1,16 @@
 'use strict'
 
-import { singular as singularize } from 'pluralize'
-import React, { useContext, useEffect, useReducer } from 'react'
+import React, { useEffect, useReducer } from 'react'
 import { Route, useRouteMatch } from 'react-router'
 
 import { useApiPrefix } from './api-prefix'
-import { Client, IParams } from './client'
-import { clientContext, resourcesContext, useResources } from './contexts'
+import { Client, getName, IName, IParams } from './client'
+import {
+  configContext,
+  resourcesContext,
+  useConfig,
+  useResources
+} from './contexts'
 import { List } from './list'
 import { Show } from './show'
 
@@ -14,98 +18,82 @@ import { useQueryParams } from '../hooks/useQueryParams'
 
 const ResourceLoader = () => {
   const route = useRouteMatch()
-  const {
-    cache,
-    client,
-    idField,
-    idParam,
-    name: { singular },
-    dispatch
-  } = useContext(clientContext)
+  const { client, idParam, dispatch } = useConfig()
   const id = route.params[idParam]
 
   useEffect(() => {
     let mounted = true
 
-    if (id !== 'new') {
-      dispatch({ type: 'SET_RESOURCE', payload: cache.items[id] })
-
-      client.get(id).then(data => {
-        if (mounted) {
-          const resource = data && data[singular]
-          if (resource) {
-            cache.items[resource[idField]] = resource
-          }
-          dispatch({ type: 'SET_RESOURCE', payload: resource })
-        }
-      })
-    }
-
-    return () => {
-      mounted = false
-    }
-  }, [client, id, singular, idField])
-
-  return null
-}
-
-const ResourcesLoader = () => {
-  const routeQueryParams = useQueryParams()
-  const {
-    cache,
-    client,
-    idField,
-    name: { plural },
-    dispatch
-  } = useContext(clientContext)
-
-  const apiQueryParams = client.serializeParams(routeQueryParams)
-  const cachedPage = cache.pages[apiQueryParams]
-
-  useEffect(() => {
-    let mounted = true
-
-    dispatch({
-      type: 'SET_RESOURCES',
-      payload: cachedPage && cachedPage.map(id => cache.items[id])
-    })
-
-    client.list(apiQueryParams).then(data => {
+    client.get(id, (err, payload) => {
+      if (err) {
+        return
+      }
       if (mounted) {
-        const resources = data && data[plural]
-        if (resources) {
-          cache.pages[apiQueryParams] = resources.map(resource => {
-            cache.items[resource[idField]] = resource
-            return resource[idField]
-          })
-        }
-        dispatch({ type: 'SET_RESOURCES', payload: resources })
+        dispatch({ type: 'SET_RESOURCE', payload })
       }
     })
 
     return () => {
       mounted = false
     }
-  }, [client, apiQueryParams, plural, idField])
+  }, [client, id])
 
   return null
 }
 
-interface IName {
-  singular: string
-  plural: string
+const ResourcesLoader = () => {
+  const routeQueryParams = useQueryParams()
+  const { client, dispatch } = useConfig()
+
+  const apiQueryParams = client.serializeParams(routeQueryParams)
+
+  useEffect(() => {
+    let mounted = true
+
+    client.list(apiQueryParams, (err, payload) => {
+      if (err) {
+        return
+      }
+      if (mounted) {
+        dispatch({ type: 'SET_RESOURCES', payload })
+      }
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [client, apiQueryParams])
+
+  return null
 }
 
-const isName = (name: any): name is IName => name && !!(name as IName).singular
-
 interface IResourcePropsBase {
-  name?: string | IName
   path?: string
-  idField?: string
+  name?: string | IName
   children?: React.ReactNode
 }
 
-interface IResourcePropsClient {
+interface IResourceClientOptions {
+  defaultQueryParams?: IParams
+  idField?: string
+  payloadName?: string | IName
+}
+
+interface IResourceEndpointProps extends IResourceClientOptions {
+  apiEndpoint?: string
+  apiPrefix?: never
+  client?: never
+}
+
+interface IResourcePrefixProps extends IResourceClientOptions {
+  apiEndpoint?: never
+  apiPrefix?: string
+  client?: never
+}
+
+type TNoResourceClientOptions = { [K in keyof IResourceClientOptions]?: never }
+
+interface IResourceClientProps extends TNoResourceClientOptions {
   apiPrefix?: never
   apiEndpoint?: never
   client?: {
@@ -113,109 +101,93 @@ interface IResourcePropsClient {
     list: (params: string | IParams) => Promise<object>
     serializeParams: (params: IParams) => string
   }
-  defaultQueryParams?: never
-}
-
-interface IResourcePropsEndpoint {
-  apiEndpoint?: string
-  apiPrefix?: never
-  client?: never
-  defaultQueryParams?: IParams
-}
-
-interface IResourcePropsPrefix {
-  apiEndpoint?: never
-  apiPrefix?: string
-  client?: never
-  defaultQueryParams?: IParams
 }
 
 type TResourceProps = IResourcePropsBase &
-  (IResourcePropsClient | IResourcePropsEndpoint | IResourcePropsPrefix)
+  (IResourceClientProps | IResourceEndpointProps | IResourcePrefixProps)
 
-interface ResourceStore {
-  [path: string]: {
-    items: { [id: string]: object }
-    pages: { [params: string]: string[] }
-  }
-}
-
-const resourceStore: ResourceStore = {}
-
-export const Resource = ({
-  name: inputName,
-  path: inputPath,
+const ResourceImpl = ({
+  path,
   apiPrefix: inputPrefix,
   apiEndpoint: inputEndpoint,
   client: inputClient,
   defaultQueryParams,
   idField = 'id',
+  name,
+  payloadName,
   children
-}: TResourceProps) => {
-  const route = useRouteMatch()
+}: TResourceProps & { path: string }) => {
+  const match = useRouteMatch()
   const contextPrefix = useApiPrefix()
-
-  const path = inputPath || route.path
-
-  const cache =
-    resourceStore[path] || (resourceStore[path] = { items: {}, pages: {} })
-
   const parentResources = useResources()
 
-  const rawName = inputName || path.split('/').pop()
+  const url = path.startsWith(match.path)
+    ? `${match.url}${path.slice(match.path.length)}`
+    : path
 
-  const name = isName(rawName)
-    ? rawName
-    : { singular: singularize(rawName), plural: rawName }
+  const resourceName = getName(name || path.split('/').pop())
+
+  const client =
+    inputClient ||
+    Client.get({
+      endpoint:
+        inputEndpoint ||
+        `${(inputPrefix || contextPrefix)
+          .replace(/^\/?/, '/')
+          .replace(/\/?$/, '')}${url}`,
+      name: payloadName || resourceName,
+      idField,
+      defaultQueryParams
+    })
+
+  const idParam = `${resourceName.singular}_${client.idField}`
 
   const [state, dispatch] = useReducer((state, action) => {
     switch (action.type) {
       case 'SET_RESOURCE':
         return {
-          ...state,
-          [name.singular]: action.payload
+          // ...state,
+          [idParam]: action.payload && action.payload[client.idField],
+          [resourceName.singular]: action.payload
         }
       case 'SET_RESOURCES':
         return {
-          [name.plural]: action.payload
+          [resourceName.plural]: action.payload
         }
     }
+    return state
   }, {})
 
-  const idParam = `${name.singular}Id`
+  return (
+    <configContext.Provider
+      value={{
+        client,
+        idParam,
+        name: resourceName,
+        path,
+        dispatch
+      }}>
+      <resourcesContext.Provider
+        value={{
+          ...parentResources,
+          ...state
+        }}>
+        <List component={ResourcesLoader} />
+        <Show component={ResourceLoader} />
+        {children}
+      </resourcesContext.Provider>
+    </configContext.Provider>
+  )
+}
 
-  const client =
-    inputClient ||
-    Client.get(
-      inputEndpoint ||
-        `${(inputPrefix || contextPrefix)
-          .replace(/^\/?/, '/')
-          .replace(/\/?$/, '')}${path}`,
-      defaultQueryParams
-    )
+// wrapper for Route component to hydrate match.url so we can use it in ResourceImpl
+export const Resource = (props: TResourceProps) => {
+  const match = useRouteMatch()
+  const path = (props.path || match.path).replace(/\/$/, '')
 
   return (
     <Route path={path}>
-      <clientContext.Provider
-        value={{
-          cache,
-          client,
-          idField,
-          idParam,
-          name,
-          path,
-          dispatch
-        }}>
-        <resourcesContext.Provider
-          value={{
-            ...parentResources,
-            ...state
-          }}>
-          <List component={ResourcesLoader} />
-          <Show component={ResourceLoader} />
-          {children}
-        </resourcesContext.Provider>
-      </clientContext.Provider>
+      <ResourceImpl {...props} path={path} />
     </Route>
   )
 }

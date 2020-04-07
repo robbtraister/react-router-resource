@@ -27,8 +27,7 @@ export const Renderer = ({
     history,
     location,
     match,
-
-    ...resources
+    resources
   }
 
   return children ? (

@@ -2,28 +2,20 @@
 
 import { createContext, useContext } from 'react'
 
-import { IParams } from './client'
+import { IClient, IName } from './client'
 
-export const clientContext = createContext({
-  cache: {
-    items: {},
-    pages: {}
-  },
-  client: {
-    get: id => Promise.resolve(undefined),
-    list: (params: string | IParams) => Promise.resolve(undefined),
-    serializeParams: (params: IParams) => undefined
-  },
-  idField: 'id',
-  idParam: null,
-  name: {
-    singular: '',
-    plural: ''
-  },
-  path: '/',
-  dispatch: action => null
-})
+interface IClientConfig {
+  client: IClient
+  idParam: string
+  name: IName
+  path: string
+  dispatch: React.Dispatch<any>
+}
+
+export const configContext = createContext<IClientConfig>(null)
 
 export const resourcesContext = createContext({})
 
+export const useClient = () => useContext(configContext).client
+export const useConfig = () => useContext(configContext)
 export const useResources = () => useContext(resourcesContext)
