@@ -11,8 +11,8 @@ export interface FetchOptions {
 }
 
 export interface Name {
-  plural: string | null
-  singular: string | null
+  plural: string
+  singular: string
 }
 
 const DEFAULT_NAME: Name = {
@@ -20,13 +20,13 @@ const DEFAULT_NAME: Name = {
   singular: 'result'
 }
 
-export const getName = (name: string | null | Name): Name => {
+export const getName = (name: string | null | Name): Name | null => {
   return name
     ? isName(name)
       ? name
       : { plural: name, singular: singularize(name) }
     : name === null
-    ? { plural: null, singular: null }
+    ? name
     : DEFAULT_NAME
 }
 
@@ -110,7 +110,7 @@ export class Client<Model> {
   readonly endpoint: string
   readonly defaultQuery: Query = {}
   readonly idField: string = 'id'
-  readonly name: Name = DEFAULT_NAME
+  readonly name: Name | null = DEFAULT_NAME
 
   private resourceCache = {
     items: {},
@@ -163,7 +163,7 @@ export class Client<Model> {
       .then(resp => resp.json())
       .then(payload => {
         const model = this.getModel(
-          this.name.singular ? payload[this.name.singular] : payload
+          this.name ? payload[this.name.singular] : payload
         )
         this.resourceCache.items[model[this.idField]] = model
 
@@ -260,10 +260,10 @@ export class Client<Model> {
       .then(resp => resp.json())
       .then(payload => {
         const models = (
-          (this.name.plural ? payload[this.name.plural] : payload) || []
+          (this.name ? payload[this.name.plural] : payload) || []
         ).map(datum => this.getModel(datum))
 
-        if (this.name.plural) {
+        if (this.name) {
           delete payload[this.name.plural]
         }
 
@@ -273,7 +273,7 @@ export class Client<Model> {
           return id
         })
 
-        return [models, this.name.plural ? payload : {}]
+        return [models, this.name ? payload : {}]
       })
 
     return callback
@@ -323,16 +323,16 @@ export class Client<Model> {
       .then(resp => resp.json())
       .then(payload => {
         const model = this.getModel(
-          this.name.singular ? payload[this.name.singular] : payload
+          this.name ? payload[this.name.singular] : payload
         )
 
-        if (this.name.singular) {
+        if (this.name) {
           delete payload[this.name.singular]
         }
 
         this.resourceCache.items[id] = model
 
-        return [model, this.name.singular ? payload : {}]
+        return [model, this.name ? payload : {}]
       })
 
     return callback

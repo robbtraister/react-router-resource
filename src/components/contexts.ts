@@ -7,7 +7,7 @@ import { Client, Name } from '../client'
 export interface Config {
   client: Client<any>
   idParam: string
-  name: Name
+  name: Name | null
   path: string
   dispatch: React.Dispatch<any>
 }
@@ -15,10 +15,7 @@ export interface Config {
 export const configContext = createContext<Config>({
   client: Client.getInstance({ endpoint: '' }),
   idParam: '',
-  name: {
-    plural: null,
-    singular: null
-  },
+  name: null,
   path: '',
   dispatch: () => {}
 })

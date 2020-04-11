@@ -70,7 +70,7 @@ const ResourceImpl = ({
     : path
 
   const resourceName = useMemo(
-    () => getName(name || (path.split('/').pop() as string)),
+    () => getName(name || (path.split('/').pop() as string)) as Name,
     [name, path]
   )
 
