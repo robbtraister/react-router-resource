@@ -1,82 +1,29 @@
 'use strict'
 
-import React, { useEffect, useReducer } from 'react'
+import React, { useMemo, useReducer } from 'react'
 import { Route, useRouteMatch } from 'react-router'
 
-import { useApiPrefix } from './api-prefix'
-import { Client, getName, IName, IParams } from './client'
-import {
-  configContext,
-  resourcesContext,
-  useConfig,
-  useResources
-} from './contexts'
-import { List } from './list'
-import { Show } from './show'
+import { ResourceLoader } from './resource-loader'
+import { ResourcesLoader } from './resources-loader'
 
-import { useQueryParams } from '../hooks/useQueryParams'
+import { useApiPrefix } from '../api-prefix'
+import { configContext, resourcesContext, useResources } from '../contexts'
+import { List } from '../list'
+import { Show } from '../show'
 
-const ResourceLoader = () => {
-  const route = useRouteMatch()
-  const { client, idParam, dispatch } = useConfig()
-  const id = route.params[idParam]
-
-  useEffect(() => {
-    let mounted = true
-
-    client.get(id, (err, payload) => {
-      if (err) {
-        return
-      }
-      if (mounted) {
-        dispatch({ type: 'SET_RESOURCE', payload })
-      }
-    })
-
-    return () => {
-      mounted = false
-    }
-  }, [client, id])
-
-  return null
-}
-
-const ResourcesLoader = () => {
-  const routeQueryParams = useQueryParams()
-  const { client, dispatch } = useConfig()
-
-  const apiQueryParams = client.serializeParams(routeQueryParams)
-
-  useEffect(() => {
-    let mounted = true
-
-    client.list(apiQueryParams, (err, payload) => {
-      if (err) {
-        return
-      }
-      if (mounted) {
-        dispatch({ type: 'SET_RESOURCES', payload })
-      }
-    })
-
-    return () => {
-      mounted = false
-    }
-  }, [client, apiQueryParams])
-
-  return null
-}
+import { Client, getName, Name, Query } from '../../client'
 
 interface IResourcePropsBase {
   path?: string
-  name?: string | IName
+  name?: string | Name
+  idParam?: string
   children?: React.ReactNode
 }
 
 interface IResourceClientOptions {
-  defaultQueryParams?: IParams
+  defaultQuery?: Query
   idField?: string
-  payloadName?: string | IName
+  payloadName?: string | Name
 }
 
 interface IResourceEndpointProps extends IResourceClientOptions {
@@ -96,11 +43,7 @@ type TNoResourceClientOptions = { [K in keyof IResourceClientOptions]?: never }
 interface IResourceClientProps extends TNoResourceClientOptions {
   apiPrefix?: never
   apiEndpoint?: never
-  client?: {
-    get: (id: string) => Promise<object>
-    list: (params: string | IParams) => Promise<object>
-    serializeParams: (params: IParams) => string
-  }
+  client?: Client<any>
 }
 
 type TResourceProps = IResourcePropsBase &
@@ -111,8 +54,9 @@ const ResourceImpl = ({
   apiPrefix: inputPrefix,
   apiEndpoint: inputEndpoint,
   client: inputClient,
-  defaultQueryParams,
+  defaultQuery,
   idField = 'id',
+  idParam: inputIdParam,
   name,
   payloadName,
   children
@@ -125,22 +69,37 @@ const ResourceImpl = ({
     ? `${match.url}${path.slice(match.path.length)}`
     : path
 
-  const resourceName = getName(name || path.split('/').pop())
+  const resourceName = useMemo(
+    () => getName(name || (path.split('/').pop() as string)),
+    [name, path]
+  )
 
-  const client =
-    inputClient ||
-    Client.get({
-      endpoint:
-        inputEndpoint ||
-        `${(inputPrefix || contextPrefix)
-          .replace(/^\/?/, '/')
-          .replace(/\/?$/, '')}${url}`,
-      name: payloadName || resourceName,
+  const client = useMemo(
+    () =>
+      inputClient ||
+      Client.getInstance({
+        endpoint:
+          inputEndpoint ||
+          `${(inputPrefix || contextPrefix || '/api/v1')
+            .replace(/^\/?/, '/')
+            .replace(/\/?$/, '')}${url}`,
+        name: payloadName || resourceName,
+        idField,
+        defaultQuery
+      }),
+    [
+      inputClient,
+      inputEndpoint,
+      inputPrefix,
+      contextPrefix,
+      payloadName,
+      resourceName,
       idField,
-      defaultQueryParams
-    })
+      defaultQuery
+    ]
+  )
 
-  const idParam = `${resourceName.singular}_${client.idField}`
+  const idParam = inputIdParam || `${resourceName.singular}_${client.idField}`
 
   const [state, dispatch] = useReducer((state, action) => {
     switch (action.type) {
@@ -148,11 +107,13 @@ const ResourceImpl = ({
         return {
           // ...state,
           [idParam]: action.payload && action.payload[client.idField],
-          [resourceName.singular]: action.payload
+          [resourceName.singular as string]: action.payload,
+          [`${resourceName.singular}_meta`]: action.meta
         }
       case 'SET_RESOURCES':
         return {
-          [resourceName.plural]: action.payload
+          [resourceName.plural as string]: action.payload,
+          [`${resourceName.plural}_meta`]: action.meta
         }
     }
     return state
@@ -172,7 +133,9 @@ const ResourceImpl = ({
           ...parentResources,
           ...state
         }}>
+        {/* load the list of resources to make them available on context */}
         <List component={ResourcesLoader} />
+        {/* load the single resource to make it available on context */}
         <Show component={ResourceLoader} />
         {children}
       </resourcesContext.Provider>

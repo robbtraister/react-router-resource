@@ -2,19 +2,28 @@
 
 import { createContext, useContext } from 'react'
 
-import { IClient, IName } from './client'
+import { Client, Name } from '../client'
 
-interface IClientConfig {
-  client: IClient
+export interface Config {
+  client: Client<any>
   idParam: string
-  name: IName
+  name: Name
   path: string
   dispatch: React.Dispatch<any>
 }
 
-export const configContext = createContext<IClientConfig>(null)
+export const configContext = createContext<Config>({
+  client: Client.getInstance({ endpoint: '' }),
+  idParam: '',
+  name: {
+    plural: null,
+    singular: null
+  },
+  path: '',
+  dispatch: () => {}
+})
 
-export const resourcesContext = createContext({})
+export const resourcesContext = createContext<object>({})
 
 export const useClient = () => useContext(configContext).client
 export const useConfig = () => useContext(configContext)

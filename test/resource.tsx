@@ -6,7 +6,7 @@ import {
   Index,
   Show
   // useResources
-} from '../src/components'
+} from '../src'
 
 interface Project {
   id: string

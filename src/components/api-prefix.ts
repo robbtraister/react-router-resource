@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from 'react'
 
-const apiPrefixContext = createContext(null)
+const apiPrefixContext = createContext<string>('/api/v1')
 
 export const ApiPrefix = apiPrefixContext.Provider
 

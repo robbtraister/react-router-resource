@@ -1,13 +1,13 @@
 'use strict'
 
-import React, { useContext } from 'react'
+import React from 'react'
 import { Route } from 'react-router'
 
-import { clientContext } from './contexts'
+import { useConfig } from './contexts'
 import { Renderer, TRendererProps } from './renderer'
 
 export const Edit = (props: TRendererProps) => {
-  const { idParam, path } = useContext(clientContext)
+  const { idParam, path } = useConfig()
 
   return (
     <Route exact path={`${path}/:${idParam}/edit`}>
