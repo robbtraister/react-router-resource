@@ -40,7 +40,12 @@ export interface Query {
 type OptionalClientProps<Model> = Partial<
   Pick<
     Client<Model>,
-    'defaultQuery' | 'getModel' | 'idField' | 'name' | 'serializeModel'
+    | 'defaultQuery'
+    | 'fetch'
+    | 'getModel'
+    | 'idField'
+    | 'name'
+    | 'serializeModel'
   >
 >
 
@@ -116,7 +121,14 @@ export class Client<Model> {
     Object.assign(this, props, { endpoint: props.endpoint.replace(/\/$/, '') })
   }
 
-  // getModel and serializeModel are passthrough defaults that may be overridden
+  // fetch/getModel/serializeModel are passthrough defaults that may be overridden
+  async fetch(
+    input: RequestInfo,
+    init?: RequestInit | undefined
+  ): Promise<Response> {
+    return window.fetch(input, init)
+  }
+
   getModel(payload: object): Model {
     return (payload as unknown) as Model
   }
@@ -141,14 +153,13 @@ export class Client<Model> {
   create(model: Model, callback: Callback<Model>): void
 
   create(model: Model, callback?: Callback<Model>): Promise<Model> | void {
-    const promise = window
-      .fetch(this.endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: this.serializeModel(model)
-      })
+    const promise = this.fetch(this.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: this.serializeModel(model)
+    })
       .then(resp => resp.json())
       .then(payload => {
         const model = this.getModel(
@@ -184,13 +195,13 @@ export class Client<Model> {
     const id =
       typeof idOrModel === 'string' ? idOrModel : idOrModel[this.idField]
 
-    const promise = window
-      .fetch(`${this.endpoint}/${id}`, { method: 'DELETE' })
-      .then(resp => {
-        delete this.resourceCache.items[id]
+    const promise = this.fetch(`${this.endpoint}/${id}`, {
+      method: 'DELETE'
+    }).then(resp => {
+      delete this.resourceCache.items[id]
 
-        return [true]
-      })
+      return [true]
+    })
 
     return callback
       ? promiseToCallback(promise, callback)
@@ -245,8 +256,7 @@ export class Client<Model> {
       return Promise.resolve(models)
     }
 
-    const promise = window
-      .fetch(`${this.endpoint}?${queryString}`)
+    const promise = this.fetch(`${this.endpoint}?${queryString}`)
       .then(resp => resp.json())
       .then(payload => {
         const models = (
@@ -309,8 +319,7 @@ export class Client<Model> {
       return Promise.resolve(model)
     }
 
-    const promise = window
-      .fetch(`${this.endpoint}/${id}`)
+    const promise = this.fetch(`${this.endpoint}/${id}`)
       .then(resp => resp.json())
       .then(payload => {
         const model = this.getModel(
@@ -344,15 +353,13 @@ export class Client<Model> {
   update(model: Model, callback?: Callback<Model>): Promise<Model> | void {
     const id = model[this.idField]
 
-    const promise = window
-      .fetch(`${this.endpoint}/${id}`, {
-        method: 'PUT',
-        body: this.serializeModel(model)
-      })
-      .then(() => {
-        this.resourceCache.items[id] = model
-        return [model]
-      })
+    const promise = this.fetch(`${this.endpoint}/${id}`, {
+      method: 'PUT',
+      body: this.serializeModel(model)
+    }).then(() => {
+      this.resourceCache.items[id] = model
+      return [model]
+    })
 
     return callback
       ? promiseToCallback(promise, callback)
