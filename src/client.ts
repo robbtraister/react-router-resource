@@ -54,27 +54,6 @@ type RequiredClientProps<Model> = Pick<Client<Model>, 'endpoint'>
 type ClientProps<Model> = OptionalClientProps<Model> &
   RequiredClientProps<Model>
 
-function parseFetchArgs<Model>(
-  optionsArg?: FetchOptions | Callback<Model>,
-  callbackArg?: Callback<Model>
-): { options: FetchOptions; callback?: Callback<Model> } {
-  const noOptions = optionsArg instanceof Function || optionsArg === undefined
-
-  if (noOptions && callbackArg) {
-    throw new Error('invalid arguments')
-  }
-
-  const callback = noOptions ? (optionsArg as Callback<Model>) : callbackArg
-
-  return {
-    options: noOptions
-      ? // if no callback, default to false to make use of cached value
-        { refresh: !!callback }
-      : (optionsArg as FetchOptions),
-    callback
-  }
-}
-
 export function serializeQuery(query: Query, defaultQuery?: Query): string {
   return Object.keys(defaultQuery || query)
     .sort()
@@ -84,35 +63,13 @@ export function serializeQuery(query: Query, defaultQuery?: Query): string {
     .join('&')
 }
 
-function promiseToCallback<T>(promise: Promise<any[]>): Promise<T>
-function promiseToCallback<T>(
-  promise: Promise<any[]>,
-  callback: Callback<T>
-): void
-function promiseToCallback<T>(
-  promise: Promise<any[]>,
-  callback?: Callback<T>
-): Promise<T> | void {
-  if (callback) {
-    promise.then(args => {
-      callback(null, ...args)
-    })
-    // don't chain so an exception from callback is not propagated back to callback
-    promise.catch(err => {
-      callback(err)
-    })
-  } else {
-    return promise.then(([data]) => data)
-  }
-}
-
 export class Client<Model> {
   readonly endpoint: string
   readonly defaultQuery: Query = {}
   readonly idField: string = 'id'
   readonly name: Name | null = DEFAULT_NAME
 
-  private resourceCache = {
+  protected resourceCache = {
     items: {},
     queries: {}
   }
@@ -150,6 +107,7 @@ export class Client<Model> {
    * @returns the model instance
    */
   create(model: Model): Promise<Model>
+  create(model: Model, callback?: undefined): Promise<Model>
   create(model: Model, callback: Callback<Model>): void
 
   create(model: Model, callback?: Callback<Model>): Promise<Model> | void {
@@ -170,9 +128,7 @@ export class Client<Model> {
         return [model]
       })
 
-    return callback
-      ? promiseToCallback(promise, callback)
-      : promiseToCallback(promise)
+    return Client.promiseToCallback(promise, callback)
   }
 
   /**
@@ -185,6 +141,8 @@ export class Client<Model> {
    */
   delete(id: string): Promise<boolean>
   delete(model: Model): Promise<boolean>
+  delete(id: string, callback?: undefined): Promise<boolean>
+  delete(model: Model, callback?: undefined): Promise<boolean>
   delete(id: string, callback: Callback<boolean>): void
   delete(model: Model, callback: Callback<boolean>): void
 
@@ -203,9 +161,7 @@ export class Client<Model> {
       return [true]
     })
 
-    return callback
-      ? promiseToCallback(promise, callback)
-      : promiseToCallback(promise)
+    return Client.promiseToCallback(promise, callback)
   }
 
   /**
@@ -225,25 +181,34 @@ export class Client<Model> {
    * @returns Promise<Model[]> (only if no callback is provided)
    */
   find(query: string | Query): Promise<Model[]>
-  find(query: string | Query, options: FetchOptions): Promise<Model[]>
+  find(query: string | Query, callback: undefined): void
   find(query: string | Query, callback: Callback<Model[]>): void
   find(
     query: string | Query,
-    options: FetchOptions,
+    options: FetchOptions | undefined
+  ): Promise<Model[]>
+
+  find(
+    query: string | Query,
+    options: FetchOptions | undefined,
+    callback: undefined
+  ): void
+
+  find(
+    query: string | Query,
+    options: FetchOptions | undefined,
     callback: Callback<Model[]>
   ): void
 
   find(
-    query: string | Query = {},
+    query: string | Query,
     optionsArg?: FetchOptions | Callback<Model[]>,
     callbackArg?: Callback<Model[]>
   ): Promise<Model[]> | void {
-    const { options, callback } = parseFetchArgs(optionsArg, callbackArg)
+    const { options, callback } = Client.parseFetchArgs(optionsArg, callbackArg)
 
     const queryString =
-      typeof query === 'string'
-        ? query
-        : serializeQuery(query, this.defaultQuery)
+      typeof query === 'string' ? query : this.serializeQuery(query)
 
     const ids = this.resourceCache.queries[queryString]
     const models = ids && ids.map(id => this.resourceCache.items[id])
@@ -276,9 +241,7 @@ export class Client<Model> {
         return [models, this.name ? payload : {}]
       })
 
-    return callback
-      ? promiseToCallback(promise, callback)
-      : promiseToCallback(promise)
+    return Client.promiseToCallback(promise, callback)
   }
 
   /**
@@ -298,16 +261,22 @@ export class Client<Model> {
    * @returns Promise<Model> (only if no callback is provided)
    */
   get(id: string): Promise<Model>
-  get(id: string, options: FetchOptions): Promise<Model>
+  get(id: string, callback: undefined): void
   get(id: string, callback: Callback<Model>): void
-  get(id: string, options: FetchOptions, callback: Callback<Model>): void
+  get(id: string, options: FetchOptions | undefined): Promise<Model>
+  get(id: string, options: FetchOptions | undefined, callback: undefined): void
+  get(
+    id: string,
+    options: FetchOptions | undefined,
+    callback: Callback<Model>
+  ): void
 
   get(
     id: string,
     optionsArg?: FetchOptions | Callback<Model>,
     callbackArg?: Callback<Model>
   ): Promise<Model> | void {
-    const { options, callback } = parseFetchArgs(optionsArg, callbackArg)
+    const { options, callback } = Client.parseFetchArgs(optionsArg, callbackArg)
 
     const model = this.resourceCache.items[id]
     if (callback) {
@@ -335,9 +304,7 @@ export class Client<Model> {
         return [model, this.name ? payload : {}]
       })
 
-    return callback
-      ? promiseToCallback(promise, callback)
-      : promiseToCallback(promise)
+    return Client.promiseToCallback(promise, callback)
   }
 
   /**
@@ -348,6 +315,7 @@ export class Client<Model> {
    * @returns the model instance
    */
   update(model: Model): Promise<Model>
+  update(model: Model, callback?: undefined): Promise<Model>
   update(model: Model, callback: Callback<Model>): void
 
   update(model: Model, callback?: Callback<Model>): Promise<Model> | void {
@@ -361,9 +329,7 @@ export class Client<Model> {
       return [model]
     })
 
-    return callback
-      ? promiseToCallback(promise, callback)
-      : promiseToCallback(promise)
+    return Client.promiseToCallback(promise, callback)
   }
 
   /**
@@ -375,6 +341,7 @@ export class Client<Model> {
    * @returns the model instance
    */
   upsert(model: Model): Promise<Model>
+  upsert(model: Model, callback?: undefined): Promise<Model>
   upsert(model: Model, callback: Callback<Model>): void
 
   upsert(model: Model, callback?: Callback<Model>): Promise<Model> | void {
@@ -397,5 +364,50 @@ export class Client<Model> {
     const cacheKey = props.endpoint
     return (this.clientCache[cacheKey] =
       this.clientCache[cacheKey] || new this({ ...props, name }))
+  }
+
+  static parseFetchArgs<Model>(
+    optionsArg?: FetchOptions | Callback<Model>,
+    callbackArg?: Callback<Model>
+  ): { options: FetchOptions; callback?: Callback<Model> } {
+    const noOptions = optionsArg instanceof Function || optionsArg === undefined
+
+    if (noOptions && callbackArg) {
+      throw new Error('invalid arguments')
+    }
+
+    const callback = noOptions ? (optionsArg as Callback<Model>) : callbackArg
+
+    return {
+      options: noOptions
+        ? // if no callback, default to false to make use of cached value
+          { refresh: !!callback }
+        : (optionsArg as FetchOptions),
+      callback
+    }
+  }
+
+  // static promiseToCallback<T>(promise: Promise<any[]>): Promise<T>
+
+  static promiseToCallback<T, CB extends Callback<T> | undefined>(
+    promise: Promise<any[]>,
+    callback?: CB
+  ): CB extends Function ? void : Promise<T>
+
+  static promiseToCallback<T>(
+    promise: Promise<any[]>,
+    callback?: Callback<T>
+  ): Promise<T> | void {
+    if (callback && callback instanceof Function) {
+      promise.then(args => {
+        callback(null, ...args)
+      })
+      // don't chain so an exception from callback is not propagated back to callback
+      promise.catch(err => {
+        callback(err)
+      })
+    } else {
+      return promise.then(([data]) => data as T)
+    }
   }
 }
