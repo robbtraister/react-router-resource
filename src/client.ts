@@ -95,7 +95,7 @@ export class Client<Model> {
   }
 
   // a simple query serializer that normalizes based on client instance defaults
-  serializeQuery(query: Query) {
+  serializeQuery(query: Query): string {
     return serializeQuery(query, this.defaultQuery)
   }
 
